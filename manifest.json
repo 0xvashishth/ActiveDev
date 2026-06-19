@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "ActiveDev",
+  "version": "1.0.0",
+  "description": "Never miss a review request on GitHub. Get notified when you're added as a reviewer or when someone reviews your PR.",
+  "permissions": [
+    "identity",
+    "alarms",
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*",
+    "https://github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "ActiveDev",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

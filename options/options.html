@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ActiveDev - Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>ActiveDev</h1>
+        <p class="subtitle">Configure your GitHub OAuth integration</p>
+      </header>
+
+      <div id="auth-status" class="card hidden">
+        <div class="status-row">
+          <span class="status-dot connected"></span>
+          <span>Connected as <strong id="connected-user"></strong></span>
+        </div>
+        <button id="logout-btn" class="btn-danger">Disconnect</button>
+      </div>
+
+      <div class="card">
+        <h2>GitHub OAuth App Configuration</h2>
+        <p class="help-text">
+          To use this extension, you need to create a GitHub OAuth App and enter
+          its credentials below.
+        </p>
+
+        <div class="form-group">
+          <label for="client-id">Client ID</label>
+          <input
+            type="text"
+            id="client-id"
+            placeholder="Paste your GitHub OAuth Client ID"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="client-secret">Client Secret</label>
+          <input
+            type="password"
+            id="client-secret"
+            placeholder="Paste your GitHub OAuth Client Secret"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Authorization callback URL</label>
+          <div class="copy-row">
+            <code id="redirect-url"></code>
+            <button
+              id="copy-url-btn"
+              class="btn-small"
+              title="Copy to clipboard"
+            >
+              Copy
+            </button>
+          </div>
+          <p class="help-text small">
+            Add this URL to your GitHub OAuth App settings under "Authorization
+            callback URL".
+          </p>
+        </div>
+
+        <div id="status-message" class="hidden"></div>
+
+        <div class="form-actions">
+          <button id="save-auth-btn" class="btn-primary">
+            Save & Authenticate
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>How to set up</h2>
+        <ol class="steps">
+          <li>
+            <strong>Create an OAuth App</strong>
+            <p>
+              Go to
+              <a href="https://github.com/settings/developers" target="_blank"
+                >GitHub Developer Settings</a
+              >
+              → OAuth Apps → New OAuth App
+            </p>
+          </li>
+          <li>
+            <strong>Configure the app</strong>
+            <p>
+              Set "Application name" to "ActiveDev". Set "Authorization callback
+              URL" to the URL shown above (copy it from the field).
+            </p>
+          </li>
+          <li>
+            <strong>Get credentials</strong>
+            <p>
+              After creating the app, copy the "Client ID" and generate a
+              "Client Secret". Paste them in the fields above.
+            </p>
+          </li>
+          <li>
+            <strong>Authenticate</strong>
+            <p>
+              Click "Save & Authenticate" and authorize the extension to access
+              your GitHub account.
+            </p>
+          </li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2>Permissions Requested</h2>
+        <ul class="perm-list">
+          <li>
+            <strong>repo</strong> - Access to your repositories (needed to read
+            PRs and check statuses)
+          </li>
+          <li><strong>read:user</strong> - Read your profile information</li>
+        </ul>
+      </div>
+
+      <footer>
+        <p>Version 1.0.0</p>
+      </footer>
+    </div>
+    <script src="options.js" type="module"></script>
+  </body>
+</html>
