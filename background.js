@@ -11,6 +11,15 @@ import {
 const NOTIFICATION_PREFIX_REVIEW_REQUEST = 'ghrr-review-';
 const NOTIFICATION_PREFIX_REVIEWED = 'ghrr-reviewed-';
 
+async function updateBadge(count) {
+  if (count > 0) {
+    await chrome.action.setBadgeText({ text: String(count) });
+    await chrome.action.setBadgeBackgroundColor({ color: '#f85149' });
+  } else {
+    await chrome.action.setBadgeText({ text: '' });
+  }
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   ensureAlarm();
   if (details.reason === 'install') {
@@ -51,6 +60,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     case 'USER_LOGGED_OUT':
       chrome.alarms.clear('github-check');
+      chrome.action.setBadgeText({ text: '' });
       sendResponse({ success: true });
       return true;
   }
@@ -92,6 +102,9 @@ async function performCheck() {
 
     await checkReviewRequests(username, !!initialCheckDone);
     await checkMyPRsReviews(username, !!initialCheckDone);
+
+    const reviewPrs = (await chrome.storage.local.get(STORAGE_KEYS.REVIEW_REQUEST_PRS))[STORAGE_KEYS.REVIEW_REQUEST_PRS] || [];
+    await updateBadge(reviewPrs.length);
 
     if (!initialCheckDone) {
       await chrome.storage.local.set({ [STORAGE_KEYS.INITIAL_CHECK_DONE]: true });
