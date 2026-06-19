@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>ActiveDev</h1>
+        <div id="user-section" class="hidden">
+          <img id="avatar" src="" alt="" />
+          <span id="username"></span>
+        </div>
+      </header>
+
+      <div id="loading-state" class="state hidden">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+      </div>
+
+      <div id="unauthenticated-state" class="state hidden">
+        <div class="state-icon">🔒</div>
+        <p class="state-title">Not Authenticated</p>
+        <p class="state-desc">Connect your GitHub account to get started.</p>
+        <button id="open-options-btn" class="btn-primary">
+          Configure OAuth
+        </button>
+      </div>
+
+      <div id="error-state" class="state hidden">
+        <div class="state-icon">⚠️</div>
+        <p class="state-title">Something went wrong</p>
+        <p id="error-message" class="state-desc"></p>
+        <button id="retry-btn" class="btn-secondary">Retry</button>
+      </div>
+
+      <div id="main-content" class="hidden">
+        <nav class="tabs">
+          <button class="tab active" data-tab="review-requests">
+            Review Requests
+            <span id="review-badge" class="badge hidden">0</span>
+          </button>
+          <button class="tab" data-tab="my-prs">
+            My PRs
+            <span id="myprs-badge" class="badge hidden">0</span>
+          </button>
+        </nav>
+
+        <div id="review-requests-tab" class="tab-panel active">
+          <div id="review-empty" class="empty-state hidden">
+            <p>No pending review requests</p>
+          </div>
+          <div id="review-list"></div>
+        </div>
+
+        <div id="my-prs-tab" class="tab-panel">
+          <div id="myprs-empty" class="empty-state hidden">
+            <p>No open pull requests</p>
+          </div>
+          <div id="myprs-list"></div>
+        </div>
+      </div>
+
+      <footer>
+        <button id="refresh-btn" class="footer-btn" title="Refresh now">
+          Refresh
+        </button>
+        <span id="last-checked"></span>
+        <button id="settings-btn" class="footer-btn" title="Settings">
+          Settings
+        </button>
+      </footer>
+    </div>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
