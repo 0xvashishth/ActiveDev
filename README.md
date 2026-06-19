@@ -82,7 +82,6 @@ github-review-reminder/
 - OAuth access token is stored in `chrome.storage.local` (not synced across devices)
 - Client ID and Client Secret are stored locally
 - CSRF protection via OAuth `state` parameter
-- All API calls use HTTPS
 - Token validation on each background check
 - Automatic logout on token expiration
 
