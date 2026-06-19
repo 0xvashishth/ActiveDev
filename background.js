@@ -232,6 +232,7 @@ async function getCachedStatus() {
     STORAGE_KEYS.LAST_CHECKED,
   ]);
 
+  
   return {
     authenticated: true,
     user: stored[STORAGE_KEYS.USER_INFO],
