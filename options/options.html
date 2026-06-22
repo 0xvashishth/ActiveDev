@@ -24,7 +24,7 @@
     <div class="card">
       <h2>Authentication</h2>
       <p class="help-text">
-        Connect your GitHub account to start getting review notifications.
+        Connect your GitHub account to start getting review notifications. The OAuth app requests read-only access to your pull requests, checks, and organization membership.
       </p>
 
       <div id="status-message" class="hidden"></div>
@@ -37,9 +37,18 @@
     <div class="card">
       <h2>How it works</h2>
       <ol class="steps">
-        <li>Click "Login with GitHub" above</li>
-        <li>Authorize the ActiveDev GitHub App</li>
-        <li>You'll be notified when you're added as a reviewer or when someone reviews your PRs</li>
+        <li>
+          <strong>Login with GitHub</strong>
+          <p>Authorize the ActiveDev OAuth App to get an access token.</p>
+        </li>
+        <li>
+          <strong>Grant access</strong>
+          <p>The OAuth app requests read-only access to your pull requests, checks, and organization data.</p>
+        </li>
+        <li>
+          <strong>Get notified</strong>
+          <p>You'll receive notifications when you're added as a reviewer or when someone reviews your PRs.</p>
+        </li>
       </ol>
     </div>
 

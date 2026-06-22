@@ -5,16 +5,16 @@ A Chrome extension that ensures you never miss a GitHub review request. Get noti
 ## Architecture
 
 ```
-┌─────────────────┐     OAuth flow via      ┌──────────────┐     GitHub App OAuth     ┌─────────┐
-│  Chrome Extension│  ───────────────────►   │  Your Server  │  ─────────────────────►  │  GitHub  │
-│  (no secrets)    │  ◄───────────────────   │ (has secrets) │  ◄─────────────────────  │          │
-└─────────────────┘    chrome.identity.      └──────────────┘                          └─────────┘
+┌─────────────────┐     OAuth flow via      ┌──────────────┐     GitHub OAuth      ┌─────────┐
+│  Chrome Extension│  ───────────────────►   │  Your Server  │  ───────────────────►  │  GitHub  │
+│  (no secrets)    │  ◄───────────────────   │ (has secrets) │  ◄───────────────────  │          │
+└─────────────────┘    chrome.identity.       └──────────────┘                        └─────────┘
                        launchWebAuthFlow
 ```
 
 - **Extension**: Stores no GitHub credentials. Only the server URL and the resulting access token.
-- **Server**: Holds the GitHub App Client ID and Client Secret. Handles the OAuth code exchange.
-- **GitHub App**: Granular read-only permissions (Pull requests, Checks, Metadata).
+- **Server**: Holds the GitHub OAuth App Client ID and Client Secret. Handles the OAuth code exchange.
+- **GitHub OAuth App**: Granular read-only permissions (Pull requests, Checks, Metadata).
 
 ## Features
 
@@ -26,27 +26,23 @@ A Chrome extension that ensures you never miss a GitHub review request. Get noti
 
 ## Setup
 
-### 1. Create a GitHub App
+### 1. Create a GitHub OAuth App
 
-1. Go to [GitHub Developer Settings](https://github.com/settings/developers) → **GitHub Apps** → **New GitHub App**
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers) → **OAuth Apps** → **New OAuth App**
 2. Fill in:
-   - **GitHub App name**: `ActiveDev`
+   - **Application name**: `ActiveDev`
    - **Homepage URL**: `https://github.com`
-   - **Callback URL**: `https://your-project.vercel.app/api/auth/callback`
-   - **Expire user authorization tokens**: Leave unchecked
-   - **Request user authorization (OAuth) during installation**: Checked
-3. **Permissions**: Pull requests (Read-only), Checks (Read-only), Metadata (Read-only)
-4. **Where can this be installed?**: Any account
-5. Click **Create GitHub App**
-6. Copy the **Client ID** and generate a **Client Secret**
+   - **Authorization callback URL**: `https://your-project.vercel.app/api/auth/callback`
+3. Click **Register application**
+4. Copy the **Client ID** and generate a **Client Secret**
 
 ### 2. Deploy the Server to Vercel
 
 1. Push this repo to GitHub
 2. Go to [vercel.com](https://vercel.com) → **Add New Project** → Import your repo
 3. Add these **Environment Variables** in Vercel dashboard:
-   - `GITHUB_CLIENT_ID` — from your GitHub App
-   - `GITHUB_CLIENT_SECRET` — from your GitHub App
+   - `GITHUB_CLIENT_ID` — from your GitHub OAuth App
+   - `GITHUB_CLIENT_SECRET` — from your GitHub OAuth App
    - `PUBLIC_URL` — `https://your-project.vercel.app`
 4. Deploy — done.
 
@@ -90,20 +86,11 @@ ActiveDev/
 
 ## Security
 
-<<<<<<< Updated upstream
 - OAuth access token is stored in `chrome.storage.local` (not synced across devices)
 - Client ID and Client Secret are stored locally
 - CSRF protection via OAuth `state` parameter
 - Token validation on each background check
 - Automatic logout on token expiration
-=======
-| Layer | Measure |
-|-------|---------|
-| Extension | No secrets; only server URL + token in `chrome.storage.local` |
-| Server | Client Secret never leaves the server; Helmet; rate limiting |
-| OAuth | HMAC-signed state tokens (stateless, no DB needed); HTTPS-only |
-| GitHub App | Read-only permissions (Pull requests, Checks, Metadata) |
->>>>>>> Stashed changes
 
 ## Permissions
 

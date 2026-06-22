@@ -6,6 +6,7 @@ import {
   getUserPRs,
   enrichReviewRequest,
   enrichMyPR,
+  checkTokenScopes,
 } from './lib/github-api.js';
 
 const NOTIFICATION_PREFIX_REVIEW_REQUEST = 'ghrr-review-';
@@ -98,6 +99,14 @@ async function performCheck() {
 
     const username = user.login;
 
+    const scopes = await checkTokenScopes();
+    if (scopes.length > 0) {
+      console.log(`Token scopes: [${scopes.join(', ')}]`);
+      if (!scopes.includes('repo')) {
+        console.warn('Token is missing "repo" scope — private repos will not be searchable.');
+      }
+    }
+
     const initialCheckDone = (await chrome.storage.local.get(STORAGE_KEYS.INITIAL_CHECK_DONE))[STORAGE_KEYS.INITIAL_CHECK_DONE];
 
     await checkReviewRequests(username, !!initialCheckDone);
@@ -169,7 +178,27 @@ async function checkMyPRsReviews(username, initialCheckDone) {
   const enriched = [];
 
   for (const pr of prs) {
-    const enrichedPr = await enrichMyPR(pr);
+    let enrichedPr;
+    try {
+      enrichedPr = await enrichMyPR(pr);
+    } catch (error) {
+      console.error('enrichMyPR threw unexpectedly for PR', pr.id, ':', error);
+      enrichedPr = {
+        id: pr.id,
+        number: pr.number,
+        title: pr.title || 'Unknown',
+        htmlUrl: pr.html_url,
+        owner: null,
+        repo: null,
+        reviews: [],
+        reviewState: 'pending',
+        approvals: [],
+        changesRequested: [],
+        totalReviews: 0,
+        error: true,
+        errorMessage: error.message,
+      };
+    }
     enriched.push(enrichedPr);
 
     if (initialCheckDone && enrichedPr.reviews && enrichedPr.reviews.length > 0) {

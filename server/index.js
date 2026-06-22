@@ -11,5 +11,5 @@ try {
 app.listen(config.port, () => {
   console.log(`ActiveDev server running on port ${config.port}`);
   console.log(`Public URL: ${config.publicUrl}`);
-  console.log(`GitHub App: ${config.github.appName}`);
+  console.log(`OAuth provider configured`);
 });

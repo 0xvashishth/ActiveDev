@@ -152,7 +152,7 @@ router.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: Date.now(),
-    app: config.github.appName,
+    app: 'active-dev',
   });
 });
 

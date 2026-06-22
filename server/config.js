@@ -4,7 +4,6 @@ const config = {
   github: {
     clientId: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    appName: process.env.GITHUB_APP_NAME || 'active-dev',
   },
 
   publicUrl: (process.env.PUBLIC_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 3000}`).replace(/\/+$/, ''),

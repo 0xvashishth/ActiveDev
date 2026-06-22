@@ -193,6 +193,21 @@ header h1 {
   font-size: 13px;
 }
 
+.empty-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.empty-hint a {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.empty-hint a:hover {
+  text-decoration: underline;
+}
+
 .pr-item {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-color);
