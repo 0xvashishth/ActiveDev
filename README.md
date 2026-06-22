@@ -84,14 +84,6 @@ ActiveDev/
 └── README.md
 ```
 
-## Security
-
-- OAuth access token is stored in `chrome.storage.local` (not synced across devices)
-- Client ID and Client Secret are stored locally
-- CSRF protection via OAuth `state` parameter
-- Token validation on each background check
-- Automatic logout on token expiration
-
 ## Permissions
 
 | Permission | Reason |
