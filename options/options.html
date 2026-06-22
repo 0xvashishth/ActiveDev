@@ -10,7 +10,7 @@
   <div class="container">
     <header>
       <h1>ActiveDev</h1>
-      <p class="subtitle">GitHub Review Reminder — Authentication Server</p>
+      <p class="subtitle">GitHub Review Reminder</p>
     </header>
 
     <div id="auth-status" class="card hidden">
@@ -22,16 +22,10 @@
     </div>
 
     <div class="card">
-      <h2>Server Configuration</h2>
+      <h2>Authentication</h2>
       <p class="help-text">
-        Enter the URL of your authentication server. The server handles
-        GitHub App OAuth so that secrets are never stored in the extension.
+        Connect your GitHub account to start getting review notifications.
       </p>
-
-      <div class="form-group">
-        <label for="server-url">Server URL</label>
-        <input type="url" id="server-url" placeholder="https://your-server.com" autocomplete="off">
-      </div>
 
       <div id="status-message" class="hidden"></div>
 
@@ -41,37 +35,12 @@
     </div>
 
     <div class="card">
-      <h2>How to set up</h2>
+      <h2>How it works</h2>
       <ol class="steps">
-        <li>
-          <strong>Deploy the authentication server</strong>
-          <p>Follow the instructions in <code>server/README.md</code> to deploy the server to Render, Railway, Fly.io, or any VPS with HTTPS.</p>
-        </li>
-        <li>
-          <strong>Create a GitHub App</strong>
-          <p>Go to <a href="https://github.com/settings/developers" target="_blank">GitHub Developer Settings</a> → GitHub Apps → New GitHub App</p>
-          <p>Set the Callback URL to <code>https://your-server.com/api/auth/callback</code>. Configure Pull requests (Read-only) and Checks (Read-only) permissions.</p>
-        </li>
-        <li>
-          <strong>Configure the server</strong>
-          <p>Set <code>GITHUB_CLIENT_ID</code>, <code>GITHUB_CLIENT_SECRET</code>, and <code>PUBLIC_URL</code> environment variables on your server.</p>
-        </li>
-        <li>
-          <strong>Connect</strong>
-          <p>Enter your server URL above and click "Login with GitHub".</p>
-        </li>
+        <li>Click "Login with GitHub" above</li>
+        <li>Authorize the ActiveDev GitHub App</li>
+        <li>You'll be notified when you're added as a reviewer or when someone reviews your PRs</li>
       </ol>
-    </div>
-
-    <div class="card">
-      <h2>Security</h2>
-      <ul class="perm-list">
-        <li>GitHub App credentials are stored <strong>only on the server</strong>, never in the extension</li>
-        <li>OAuth flow uses CSRF protection via random state parameter</li>
-        <li>Access token is transmitted over HTTPS and stored in <code>chrome.storage.local</code></li>
-        <li>Server uses Helmet for security headers and rate limiting</li>
-        <li>GitHub App permissions are scoped to read-only Pull requests and Checks</li>
-      </ul>
     </div>
 
     <footer>

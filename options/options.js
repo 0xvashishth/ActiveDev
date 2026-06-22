@@ -1,6 +1,4 @@
 import {
-  getServerUrl,
-  setServerUrl,
   authenticate,
   isAuthenticated,
   logout,
@@ -9,7 +7,6 @@ import { getCurrentUser } from '../lib/github-api.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const elements = {
-    serverUrl: document.getElementById('server-url'),
     loginBtn: document.getElementById('login-btn'),
     logoutBtn: document.getElementById('logout-btn'),
     authStatus: document.getElementById('auth-status'),
@@ -17,7 +14,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusMessage: document.getElementById('status-message'),
   };
 
-  await loadServerUrl(elements);
   await updateAuthStatus(elements);
 
   elements.loginBtn.addEventListener('click', async () => {
@@ -28,11 +24,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await handleLogout(elements);
   });
 });
-
-async function loadServerUrl(elements) {
-  const url = await getServerUrl();
-  elements.serverUrl.value = url;
-}
 
 async function updateAuthStatus(elements) {
   const authenticated = await isAuthenticated();
@@ -50,26 +41,11 @@ async function updateAuthStatus(elements) {
 }
 
 async function handleLogin(elements) {
-  const serverUrl = elements.serverUrl.value.trim();
-
-  if (!serverUrl) {
-    showStatus(elements, 'Please enter your server URL.', 'error');
-    return;
-  }
-
-  try {
-    new URL(serverUrl);
-  } catch {
-    showStatus(elements, 'Invalid URL format.', 'error');
-    return;
-  }
-
   elements.loginBtn.disabled = true;
   elements.loginBtn.textContent = 'Authenticating...';
   hideStatus(elements);
 
   try {
-    await setServerUrl(serverUrl);
     const token = await authenticate();
 
     if (token) {
@@ -77,7 +53,7 @@ async function handleLogin(elements) {
       const user = await getCurrentUser();
       elements.authStatus.classList.remove('hidden');
       elements.connectedUser.textContent = user.login;
-      showStatus(elements, `Successfully connected as ${user.login}.`, 'success');
+      showStatus(elements, `Connected as ${user.login}.`, 'success');
       elements.loginBtn.textContent = 'Re-authenticate';
     }
   } catch (error) {
@@ -93,7 +69,7 @@ async function handleLogout(elements) {
     await logout();
     await chrome.runtime.sendMessage({ type: 'USER_LOGGED_OUT' });
     elements.authStatus.classList.add('hidden');
-    showStatus(elements, 'Disconnected successfully.', 'success');
+    showStatus(elements, 'Disconnected.', 'success');
     elements.loginBtn.textContent = 'Login with GitHub';
   } catch (error) {
     showStatus(elements, `Logout failed: ${error.message}`, 'error');
