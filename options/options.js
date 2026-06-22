@@ -1,44 +1,27 @@
 import {
-  getClientCredentials,
-  saveClientCredentials,
-  clearClientCredentials,
+  getServerUrl,
+  setServerUrl,
   authenticate,
   isAuthenticated,
   logout,
-  getRedirectURL,
 } from '../lib/auth.js';
 import { getCurrentUser } from '../lib/github-api.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const elements = {
-    clientId: document.getElementById('client-id'),
-    clientSecret: document.getElementById('client-secret'),
-    redirectUrl: document.getElementById('redirect-url'),
-    saveAuthBtn: document.getElementById('save-auth-btn'),
+    serverUrl: document.getElementById('server-url'),
+    loginBtn: document.getElementById('login-btn'),
     logoutBtn: document.getElementById('logout-btn'),
-    copyUrlBtn: document.getElementById('copy-url-btn'),
     authStatus: document.getElementById('auth-status'),
     connectedUser: document.getElementById('connected-user'),
     statusMessage: document.getElementById('status-message'),
   };
 
-  const redirectUri = getRedirectURL();
-  elements.redirectUrl.textContent = redirectUri;
-
-  elements.copyUrlBtn.addEventListener('click', () => {
-    navigator.clipboard.writeText(redirectUri).then(() => {
-      elements.copyUrlBtn.textContent = 'Copied!';
-      setTimeout(() => {
-        elements.copyUrlBtn.textContent = 'Copy';
-      }, 2000);
-    });
-  });
-
-  await loadCredentials(elements);
+  await loadServerUrl(elements);
   await updateAuthStatus(elements);
 
-  elements.saveAuthBtn.addEventListener('click', async () => {
-    await handleAuthenticate(elements);
+  elements.loginBtn.addEventListener('click', async () => {
+    await handleLogin(elements);
   });
 
   elements.logoutBtn.addEventListener('click', async () => {
@@ -46,10 +29,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
-async function loadCredentials(elements) {
-  const { clientId, clientSecret } = await getClientCredentials();
-  if (clientId) elements.clientId.value = clientId;
-  if (clientSecret) elements.clientSecret.value = clientSecret;
+async function loadServerUrl(elements) {
+  const url = await getServerUrl();
+  elements.serverUrl.value = url;
 }
 
 async function updateAuthStatus(elements) {
@@ -67,21 +49,27 @@ async function updateAuthStatus(elements) {
   }
 }
 
-async function handleAuthenticate(elements) {
-  const clientId = elements.clientId.value.trim();
-  const clientSecret = elements.clientSecret.value.trim();
+async function handleLogin(elements) {
+  const serverUrl = elements.serverUrl.value.trim();
 
-  if (!clientId || !clientSecret) {
-    showStatus(elements, 'Please enter both Client ID and Client Secret.', 'error');
+  if (!serverUrl) {
+    showStatus(elements, 'Please enter your server URL.', 'error');
     return;
   }
 
-  elements.saveAuthBtn.disabled = true;
-  elements.saveAuthBtn.textContent = 'Authenticating...';
+  try {
+    new URL(serverUrl);
+  } catch {
+    showStatus(elements, 'Invalid URL format.', 'error');
+    return;
+  }
+
+  elements.loginBtn.disabled = true;
+  elements.loginBtn.textContent = 'Authenticating...';
   hideStatus(elements);
 
   try {
-    await saveClientCredentials(clientId, clientSecret);
+    await setServerUrl(serverUrl);
     const token = await authenticate();
 
     if (token) {
@@ -89,27 +77,24 @@ async function handleAuthenticate(elements) {
       const user = await getCurrentUser();
       elements.authStatus.classList.remove('hidden');
       elements.connectedUser.textContent = user.login;
-      showStatus(elements, `Successfully authenticated as ${user.login}.`, 'success');
-      elements.saveAuthBtn.textContent = 'Re-authenticate';
+      showStatus(elements, `Successfully connected as ${user.login}.`, 'success');
+      elements.loginBtn.textContent = 'Re-authenticate';
     }
   } catch (error) {
     showStatus(elements, `Authentication failed: ${error.message}`, 'error');
-    elements.saveAuthBtn.textContent = 'Save & Authenticate';
+    elements.loginBtn.textContent = 'Login with GitHub';
   }
 
-  elements.saveAuthBtn.disabled = false;
+  elements.loginBtn.disabled = false;
 }
 
 async function handleLogout(elements) {
   try {
     await logout();
-    await clearClientCredentials();
     await chrome.runtime.sendMessage({ type: 'USER_LOGGED_OUT' });
     elements.authStatus.classList.add('hidden');
-    elements.clientId.value = '';
-    elements.clientSecret.value = '';
     showStatus(elements, 'Disconnected successfully.', 'success');
-    elements.saveAuthBtn.textContent = 'Save & Authenticate';
+    elements.loginBtn.textContent = 'Login with GitHub';
   } catch (error) {
     showStatus(elements, `Logout failed: ${error.message}`, 'error');
   }

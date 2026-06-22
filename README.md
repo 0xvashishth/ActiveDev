@@ -1,97 +1,117 @@
-# ActiveDev
+# ActiveDev — GitHub Review Reminder
 
-A Chrome extension that ensures you never miss a GitHub review request again.
-
-## Features
-
-- **Review Request Notifications** - Get a Chrome notification the moment you're added as a reviewer on any PR
-- **Review Received Notifications** - Get notified when someone reviews your open PRs
-- **Review Requests Dashboard** - See all PRs where you're a requested reviewer
-- **My PRs Dashboard** - See your open PRs with review status and CI status
-  - Approved / Changes Requested / Pending Review indicators
-  - CI check status (passing, failing, pending)
-  - Reviewer tags showing who approved or requested changes
-- **Polling every 3 minutes** - Automatically checks for updates in the background
-
-## Setup
-
-### 1. Create a GitHub OAuth App
-
-1. Go to [GitHub Developer Settings](https://github.com/settings/developers) → OAuth Apps → **New OAuth App**
-2. Fill in:
-   - **Application name**: `ActiveDev`
-   - **Homepage URL**: `https://github.com`
-   - **Authorization callback URL**: You'll get this from the extension (see step 3)
-3. Click **Register application**
-4. Copy the **Client ID** and generate a **Client Secret** (save these)
-
-### 2. Install the Extension
-
-1. Open Chrome and go to `chrome://extensions`
-2. Enable **Developer mode** (toggle in top-right)
-3. Click **Load unpacked**
-4. Select the `github-review-reminder` folder
-
-### 3. Get the Extension ID
-
-1. After loading, note the extension ID from `chrome://extensions` (it's a 32-character string like `abcdefghijklmnopabcdefghijklmnop`)
-2. Go to your GitHub OAuth App settings and set the **Authorization callback URL** to:
-   `https://<YOUR_EXTENSION_ID>.chromiumapp.org/oauth2`
-
-### 4. Configure the Extension
-
-1. Click the extension icon → **Settings**
-2. Or right-click the extension icon → **Options**
-3. Paste your **Client ID** and **Client Secret**
-4. Click **Save & Authenticate**
-5. Authorize the extension in the GitHub popup
-
-## Usage
-
-- Click the extension icon to open the dashboard
-- **Review Requests** tab: PRs where you're requested as a reviewer
-- **My PRs** tab: Your open PRs with status indicators
-- Click any PR to open it in a new tab
-- Click **Refresh** to manually trigger a check
-- Notifications appear automatically for new review requests and reviews
+A Chrome extension that ensures you never miss a GitHub review request. Get notified when you're added as a reviewer or when someone reviews your PR.
 
 ## Architecture
 
 ```
-github-review-reminder/
-├── manifest.json          # Extension manifest (MV3)
-├── background.js          # Service worker: polling, notifications
+┌─────────────────┐     OAuth flow via      ┌──────────────┐     GitHub App OAuth     ┌─────────┐
+│  Chrome Extension│  ───────────────────►   │  Your Server  │  ─────────────────────►  │  GitHub  │
+│  (no secrets)    │  ◄───────────────────   │ (has secrets) │  ◄─────────────────────  │          │
+└─────────────────┘    chrome.identity.      └──────────────┘                          └─────────┘
+                       launchWebAuthFlow
+```
+
+- **Extension**: Stores no GitHub credentials. Only the server URL and the resulting access token.
+- **Server**: Holds the GitHub App Client ID and Client Secret. Handles the OAuth code exchange.
+- **GitHub App**: Granular read-only permissions (Pull requests, Checks, Metadata).
+
+## Features
+
+- **Review Request Notifications** — Chrome notification when added as a reviewer
+- **Review Received Notifications** — Notified when someone reviews your PRs
+- **Review Requests Dashboard** — PRs where you're a requested reviewer
+- **My PRs Dashboard** — Your open PRs with review status + CI status
+- **Polling every 3 minutes** — Automatic background checks
+
+## Setup
+
+### 1. Create a GitHub App
+
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers) → **GitHub Apps** → **New GitHub App**
+2. Fill in:
+   - **GitHub App name**: `ActiveDev`
+   - **Homepage URL**: `https://github.com`
+   - **Callback URL**: `https://your-project.vercel.app/api/auth/callback`
+   - **Expire user authorization tokens**: Leave unchecked
+   - **Request user authorization (OAuth) during installation**: Checked
+3. **Permissions**: Pull requests (Read-only), Checks (Read-only), Metadata (Read-only)
+4. **Where can this be installed?**: Any account
+5. Click **Create GitHub App**
+6. Copy the **Client ID** and generate a **Client Secret**
+
+### 2. Deploy the Server to Vercel
+
+1. Push this repo to GitHub
+2. Go to [vercel.com](https://vercel.com) → **Add New Project** → Import your repo
+3. Add these **Environment Variables** in Vercel dashboard:
+   - `GITHUB_CLIENT_ID` — from your GitHub App
+   - `GITHUB_CLIENT_SECRET` — from your GitHub App
+   - `PUBLIC_URL` — `https://your-project.vercel.app`
+4. Deploy — done.
+
+The server is stateless (HMAC-signed state tokens), so no database is needed.
+
+### 3. Install the Extension
+
+1. Open Chrome → `chrome://extensions` → Enable **Developer mode**
+2. Click **Load unpacked** → select this folder
+3. Click the extension icon → **Settings**
+4. Enter `https://your-project.vercel.app` → **Login with GitHub**
+
+## Project Structure
+
+```
+ActiveDev/
+├── api/index.js             # Vercel serverless entry point
+├── vercel.json              # Vercel deployment config
+├── package.json             # Root dependencies (for Vercel build)
+├── manifest.json            # Extension manifest (MV3)
+├── background.js            # Service worker: polling & notifications
 ├── lib/
-│   ├── constants.js       # Shared constants
-│   ├── auth.js            # GitHub OAuth flow
-│   └── github-api.js      # GitHub API wrapper
+│   ├── constants.js         # Shared constants
+│   ├── auth.js              # Server-based GitHub OAuth
+│   └── github-api.js        # GitHub API wrapper
 ├── popup/
-│   ├── popup.html         # Popup UI
-│   ├── popup.js           # Popup logic
-│   └── popup.css          # Popup styles
+│   ├── popup.html / .js / .css
 ├── options/
-│   ├── options.html       # Settings page
-│   ├── options.js         # Settings logic
-│   └── options.css        # Settings styles
-└── icons/
-    └── icon128.png        # Extension icon
+│   ├── options.html / .js / .css
+├── server/
+│   ├── app.js               # Express app (no listen, reusable)
+│   ├── index.js             # Express server (local dev with listen)
+│   ├── config.js            # Server configuration
+│   ├── routes/auth.js       # OAuth routes (stateless HMAC tokens)
+│   ├── .env.example
+│   └── README.md            # Vercel deployment guide
+├── icons/
+│   └── icon128.png
+└── README.md
 ```
 
 ## Security
 
+<<<<<<< Updated upstream
 - OAuth access token is stored in `chrome.storage.local` (not synced across devices)
 - Client ID and Client Secret are stored locally
 - CSRF protection via OAuth `state` parameter
 - Token validation on each background check
 - Automatic logout on token expiration
+=======
+| Layer | Measure |
+|-------|---------|
+| Extension | No secrets; only server URL + token in `chrome.storage.local` |
+| Server | Client Secret never leaves the server; Helmet; rate limiting |
+| OAuth | HMAC-signed state tokens (stateless, no DB needed); HTTPS-only |
+| GitHub App | Read-only permissions (Pull requests, Checks, Metadata) |
+>>>>>>> Stashed changes
 
 ## Permissions
 
 | Permission | Reason |
 |-----------|--------|
-| `identity` | GitHub OAuth authentication flow |
-| `alarms` | Periodic background polling (every 3 min) |
+| `identity` | GitHub OAuth via `chrome.identity.launchWebAuthFlow` |
+| `alarms` | Polling every 3 minutes |
 | `notifications` | Chrome notifications for review events |
-| `storage` | Store OAuth token and PR data locally |
+| `storage` | Store access token and PR data locally |
 | `https://api.github.com/*` | GitHub API requests |
 | `https://github.com/*` | GitHub OAuth authorization |
