@@ -7,7 +7,7 @@ const config = {
     appName: process.env.GITHUB_APP_NAME || 'active-dev',
   },
 
-  publicUrl: process.env.PUBLIC_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 3000}`,
+  publicUrl: (process.env.PUBLIC_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 3000}`).replace(/\/+$/, ''),
 
   stateTtlMs: 10 * 60 * 1000,
 
