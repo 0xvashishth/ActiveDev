@@ -8,6 +8,12 @@ const config = {
 
   publicUrl: (process.env.PUBLIC_URL || `http://localhost:${parseInt(process.env.PORT, 10) || 3000}`).replace(/\/+$/, ''),
 
+  // Optional comma-separated allowlist of Chrome extension IDs. Empty = allow any.
+  allowedExtensionIds: (process.env.ALLOWED_EXTENSION_IDS || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean),
+
   stateTtlMs: 10 * 60 * 1000,
 
   rateLimit: {

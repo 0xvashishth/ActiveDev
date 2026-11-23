@@ -7,6 +7,9 @@ import { authRouter } from './routes/auth.js';
 
 const app = express();
 
+// Vercel (and most hosts) sit behind one proxy; needed for per-client rate limiting.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({ origin: true }));
 app.use(express.json());
@@ -29,6 +32,7 @@ app.get('/', (req, res) => {
     auth_endpoints: {
       start: '/api/auth/start',
       callback: '/api/auth/callback',
+      app: '/api/auth/app',
     },
   });
 });

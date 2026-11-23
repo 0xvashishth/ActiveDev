@@ -1,7 +1,23 @@
+import { STORAGE_KEYS } from '../lib/constants.js';
+import { appSettingsUrl, logout } from '../lib/auth.js';
+import { initTheme, nextTheme, setTheme, themeIcon } from '../lib/theme.js';
+import { h, openUrl, setChildren, showToast } from './dom.js';
+import { mountNotesView } from './notes-view.js';
+import { mountFocusView } from './focus-view.js';
+
+const LAST_TAB_KEY = 'activedev:lastTab';
+
+/** Set once the DOM is ready; PR cards use it for the 📌 "add to today" button. */
+let notesView = null;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function formatRelativeTime(dateString) {
+  if (!dateString) return '';
   const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now - date;
+  const diffMs = Date.now() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
@@ -13,94 +29,532 @@ function formatRelativeTime(dateString) {
   return date.toLocaleDateString();
 }
 
-function formatLastChecked(timestamp) {
-  if (!timestamp) return '';
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now - date;
-  const diffMins = Math.floor(diffMs / 60000);
-
-  if (diffMins < 1) return 'Updated just now';
-  if (diffMins < 60) return `Updated ${diffMins}m ago`;
-  return `Updated ${formatRelativeTime(timestamp)}`;
+function plural(n, word, pluralWord = `${word}s`) {
+  return `${n} ${n === 1 ? word : pluralWord}`;
 }
 
-const stateClasses = {
-  approved: { label: 'Approved', className: 'approved' },
-  changes_requested: { label: 'Changes requested', className: 'changes_requested' },
-  pending: { label: 'Pending review', className: 'pending' },
+/** Chip = small labelled indicator. `tone` maps to a CSS colour class. */
+function chip(text, tone = 'neutral', title = '') {
+  return h('span', { className: `chip ${tone}`, title: title || undefined }, text);
+}
+
+const CI_CHIPS = {
+  passing: ['✓ Checks passing', 'success'],
+  failing: ['✗ Checks failing', 'danger'],
+  pending: ['● Checks running', 'warning'],
 };
 
-const ciStateClasses = {
-  passing: { label: 'Checks passing', className: 'passing' },
-  failing: { label: 'Checks failing', className: 'failing' },
-  pending: { label: 'Checks pending', className: 'pending' },
-  unknown: { label: '', className: 'unknown' },
+const REVIEWER_STATE = {
+  APPROVED: { symbol: '✓', tone: 'success', label: 'approved' },
+  CHANGES_REQUESTED: { symbol: '✗', tone: 'danger', label: 'requested changes' },
+  COMMENTED: { symbol: '💬', tone: 'neutral', label: 'commented' },
 };
 
-document.addEventListener('DOMContentLoaded', async () => {
-  const elements = {
-    loadingState: document.getElementById('loading-state'),
-    unauthState: document.getElementById('unauthenticated-state'),
-    errorState: document.getElementById('error-state'),
-    mainContent: document.getElementById('main-content'),
-    userSection: document.getElementById('user-section'),
-    avatar: document.getElementById('avatar'),
-    username: document.getElementById('username'),
-    errorMessage: document.getElementById('error-message'),
-    reviewList: document.getElementById('review-list'),
-    reviewEmpty: document.getElementById('review-empty'),
-    myprsList: document.getElementById('myprs-list'),
-    myprsEmpty: document.getElementById('myprs-empty'),
-    reviewBadge: document.getElementById('review-badge'),
-    myprsBadge: document.getElementById('myprs-badge'),
-    lastChecked: document.getElementById('last-checked'),
-    refreshBtn: document.getElementById('refresh-btn'),
-    retryBtn: document.getElementById('retry-btn'),
-    settingsBtn: document.getElementById('settings-btn'),
-    openOptionsBtn: document.getElementById('open-options-btn'),
-  };
+// ---------------------------------------------------------------------------
+// Shared indicator builders
+// ---------------------------------------------------------------------------
 
-  const tabs = document.querySelectorAll('.tab');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
+function reviewerTags(reviewers) {
+  return reviewers.map((r) => {
+    const info = REVIEWER_STATE[r.state] || REVIEWER_STATE.COMMENTED;
+    return h(
+      'span',
+      { className: `reviewer-tag ${info.tone}`, title: `${r.login} ${info.label} ${formatRelativeTime(r.submittedAt)}` },
+      `${info.symbol} ${r.login}`
+    );
+  });
+}
+
+/** Conversation indicator, phrased from the reviewer's or the author's point of view. */
+function conversationChips(pr, perspective) {
+  const t = pr.threads;
+  if (!pr.detailsAvailable) return [];
+  const chips = [];
+
+  if (t.total === 0) {
+    if (pr.commentCount > 0) chips.push(chip(`💬 ${plural(pr.commentCount, 'comment')}`, 'neutral', 'Comments on the PR conversation tab'));
+    return chips;
+  }
+
+  const totalLabel = t.truncated ? `${t.total}+` : String(t.total);
+  if (t.unresolved === 0) {
+    chips.push(chip(`✓ All ${totalLabel} conversations resolved`, 'success'));
+  } else {
+    chips.push(
+      chip(
+        `💬 ${t.unresolved} unresolved · ${t.resolved} resolved`,
+        'warning',
+        `${plural(t.unresolved, 'unresolved conversation')}${t.outdated ? ` (${t.outdated} on outdated code)` : ''}`
+      )
+    );
+    if (perspective === 'author' && t.awaitingViewer > 0) {
+      chips.push(chip(`↩ ${t.awaitingViewer} awaiting your reply`, 'danger', 'Unresolved threads where the latest comment is not yours'));
+    }
+    if (perspective === 'reviewer' && t.startedByViewer > 0) {
+      chips.push(chip(`${t.startedByViewer} of yours still open`, 'info', 'Unresolved threads you started'));
+    }
+  }
+  if (pr.commentCount > 0) chips.push(chip(`🗨 ${plural(pr.commentCount, 'comment')}`, 'neutral', 'Comments on the PR conversation tab'));
+  return chips;
+}
+
+function healthChips(pr) {
+  const chips = [];
+  const ci = CI_CHIPS[pr.ciState];
+  if (ci) chips.push(chip(ci[0], ci[1]));
+  if (pr.mergeable === 'CONFLICTING') chips.push(chip('⚠ Merge conflicts', 'danger'));
+  if (pr.additions !== null && pr.deletions !== null) {
+    chips.push(
+      h(
+        'span',
+        { className: 'chip size', title: pr.changedFiles != null ? plural(pr.changedFiles, 'file') + ' changed' : '' },
+        h('span', { className: 'add' }, `+${pr.additions}`),
+        ' ',
+        h('span', { className: 'del' }, `−${pr.deletions}`)
+      )
+    );
+  }
+  return chips;
+}
+
+function updatePinButton(button, pinned) {
+  button.classList.toggle('pinned', pinned);
+  button.title = pinned ? "In today's notes" : "Add to today's notes";
+  button.setAttribute('aria-pressed', String(pinned));
+}
+
+/** 📌 button: adds the PR to today's todo list (verb: "Review" / "Follow up on"). */
+function pinButton(pr, verb) {
+  const button = h('button', { className: 'pin-btn', 'data-url': pr.htmlUrl, 'aria-label': "Add to today's notes" }, '📌');
+  updatePinButton(button, !!notesView?.isPinned(pr.htmlUrl));
+  button.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!notesView) return;
+    const result = await notesView.pinPullRequest(pr, verb);
+    updatePinButton(button, true);
+    showToast(result === 'exists' ? "Already in today's notes" : "Added to today's notes", {
+      label: 'View',
+      onClick: () => document.querySelector('.tab[data-tab="notes"]').click(),
     });
   });
+  button.addEventListener('keydown', (e) => e.stopPropagation());
+  return button;
+}
 
-  elements.openOptionsBtn.addEventListener('click', () => {
+function prHeader(pr, pinVerb) {
+  return h(
+    'div',
+    { className: 'pr-header' },
+    h('span', { className: 'pr-title', title: pr.title }, pr.title),
+    h('span', { className: 'pr-number' }, `#${pr.number}`),
+    pinButton(pr, pinVerb)
+  );
+}
+
+function prMeta(pr, { showAuthor }) {
+  return h(
+    'div',
+    { className: 'pr-meta' },
+    h('span', { className: 'pr-repo' }, pr.isPrivate ? '🔒 ' : '', `${pr.owner || '?'}/${pr.repo || '?'}`),
+    pr.draft && h('span', { className: 'pr-draft' }, 'Draft'),
+    showAuthor && h('span', {}, `by ${pr.author || 'unknown'}`),
+    h('span', { title: `Updated ${new Date(pr.updatedAt).toLocaleString()}` }, `updated ${formatRelativeTime(pr.updatedAt)}`)
+  );
+}
+
+function labelsRow(pr) {
+  if (!pr.labels?.length) return null;
+  return h(
+    'div',
+    { className: 'labels' },
+    pr.labels.slice(0, 5).map((l) =>
+      h('span', { className: 'label', style: { borderColor: `#${/^[0-9a-f]{6}$/i.test(l.color) ? l.color : '8b949e'}` } }, l.name)
+    )
+  );
+}
+
+function detailsUnavailableNote(pr) {
+  if (pr.detailsAvailable) return null;
+  return h('div', { className: 'pr-row muted' }, pr.detailsError || 'Review details not loaded yet.');
+}
+
+function prCard(pr, children) {
+  const card = h('div', { className: 'pr-item', tabindex: '0', role: 'link' }, children);
+  card.addEventListener('click', () => openUrl(pr.htmlUrl));
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') openUrl(pr.htmlUrl);
+  });
+  return card;
+}
+
+// ---------------------------------------------------------------------------
+// Review Requests tab
+// ---------------------------------------------------------------------------
+
+function reviewRequestCard(pr) {
+  const requestChips = [];
+  if (pr.viewerRequestVia === 'team') {
+    requestChips.push(chip(`👥 via ${pr.requestedTeams.join(', ')}`, 'info', 'Requested from a team you belong to'));
+  } else if (pr.viewerRequestVia === 'direct') {
+    requestChips.push(chip('👤 Requested from you', 'info'));
+  }
+  if (pr.viewerReview) {
+    requestChips.push(
+      chip('🔁 Re-review requested', 'warning', `You reviewed ${formatRelativeTime(pr.viewerReview.submittedAt)}`)
+    );
+  }
+  if (pr.newCommitsSinceViewerReview) requestChips.push(chip('New commits since your review', 'warning'));
+  if (pr.viewerHasPendingReview) requestChips.push(chip('📝 Your review draft is not submitted', 'danger'));
+
+  const others = pr.otherReviewers || [];
+  let reviewedRow = null;
+  if (pr.detailsAvailable) {
+    reviewedRow = others.length
+      ? h(
+          'div',
+          { className: 'pr-row reviewers' },
+          h('span', { className: 'row-label' }, `Already reviewed by ${others.length}:`),
+          reviewerTags(others)
+        )
+      : h('div', { className: 'pr-row muted' }, 'No one has reviewed yet');
+  }
+
+  return prCard(pr, [
+    prHeader(pr, 'Review'),
+    prMeta(pr, { showAuthor: true }),
+    requestChips.length && h('div', { className: 'pr-row' }, requestChips),
+    reviewedRow,
+    h('div', { className: 'pr-row' }, conversationChips(pr, 'reviewer'), healthChips(pr)),
+    labelsRow(pr),
+    detailsUnavailableNote(pr),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// My PRs tab
+// ---------------------------------------------------------------------------
+
+const DECISION_CHIPS = {
+  APPROVED: ['✓ Approved', 'success'],
+  CHANGES_REQUESTED: ['✗ Changes requested', 'danger'],
+  REVIEW_REQUIRED: ['Review required', 'warning'],
+};
+
+function myPRCard(pr) {
+  const statusChips = [];
+  const decision = DECISION_CHIPS[pr.reviewDecision];
+  if (decision) statusChips.push(chip(decision[0], decision[1], 'Review decision from branch protection rules'));
+  else if (pr.reviewState === 'approved') statusChips.push(chip('✓ Approved', 'success'));
+  else if (pr.reviewState === 'changes_requested') statusChips.push(chip('✗ Changes requested', 'danger'));
+  else if (pr.detailsAvailable && pr.reviewers.length === 0) statusChips.push(chip('Awaiting first review', 'neutral'));
+
+  const pending = (pr.requestedReviewers || []).map((r) => (r.type === 'team' ? r.slug : r.login));
+
+  return prCard(pr, [
+    prHeader(pr, 'Follow up on'),
+    prMeta(pr, { showAuthor: false }),
+    h('div', { className: 'pr-row' }, statusChips, healthChips(pr)),
+    pr.reviewers?.length > 0 && h('div', { className: 'pr-row reviewers' }, reviewerTags(pr.reviewers)),
+    pending.length > 0 &&
+      h('div', { className: 'pr-row muted', title: 'Requested reviewers who have not reviewed yet' }, `⏳ Waiting on ${pending.join(', ')}`),
+    h('div', { className: 'pr-row' }, conversationChips(pr, 'author')),
+    labelsRow(pr),
+    detailsUnavailableNote(pr),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Banners (org access, SSO, scopes, errors)
+// ---------------------------------------------------------------------------
+
+function banner(tone, message, action) {
+  return h(
+    'div',
+    { className: `banner ${tone}` },
+    h('span', {}, message),
+    action && h('button', { className: 'banner-btn', onClick: action.onClick }, action.label)
+  );
+}
+
+function buildBanners(status) {
+  const banners = [];
+  const settingsUrl = appSettingsUrl(status.appInfo);
+
+  if (status.lastError) {
+    const when = formatRelativeTime(status.lastError.at);
+    banners.push(banner('danger', `Last update failed (${when}): ${status.lastError.message}`));
+  }
+
+  if (status.missingScopes?.length) {
+    banners.push(
+      banner(
+        'warning',
+        `Your login is missing the ${status.missingScopes.join(', ')} permission, so some organization PRs may be hidden.`,
+        { label: 'Re-login', onClick: () => chrome.runtime.openOptionsPage() }
+      )
+    );
+  }
+
+  const ssoLogins = new Set();
+  for (const org of status.ssoOrgs || []) if (org.login) ssoLogins.add(org.login);
+  for (const org of status.orgs || []) if (org.access === 'sso_required') ssoLogins.add(org.login);
+  const unknownSso = (status.ssoOrgs || []).filter((o) => !o.login).length;
+  for (const login of ssoLogins) {
+    banners.push(
+      banner('warning', `${login} uses SAML SSO: its PRs are hidden until you authorize.`, {
+        label: 'Authorize',
+        onClick: () => openUrl(`https://github.com/orgs/${encodeURIComponent(login)}/sso`),
+      })
+    );
+  }
+  if (unknownSso > 0) {
+    banners.push(
+      banner('warning', `${plural(unknownSso, 'organization')} hid results because SAML SSO is not authorized.`, {
+        label: 'Fix',
+        onClick: () => openUrl(settingsUrl),
+      })
+    );
+  }
+
+  const restricted = (status.orgs || []).filter((o) => o.access === 'oauth_restricted').map((o) => o.login);
+  if (restricted.length) {
+    banners.push(
+      banner(
+        'warning',
+        `${restricted.join(', ')} restrict${restricted.length === 1 ? 's' : ''} third-party apps: PRs there can't be fetched until access is granted.`,
+        { label: 'Grant / request', onClick: () => openUrl(settingsUrl) }
+      )
+    );
+  }
+
+  return banners;
+}
+
+// ---------------------------------------------------------------------------
+// Page wiring
+// ---------------------------------------------------------------------------
+
+/**
+ * Wires up the popup. Exported (rather than only run as a DOMContentLoaded
+ * side effect) so tests can build a DOM, import this module, and call it
+ * directly without needing to fire a real DOMContentLoaded event.
+ */
+export async function initPopup() {
+  const $ = (id) => document.getElementById(id);
+  const elements = {
+    loadingState: $('loading-state'),
+    authRequired: $('auth-required'),
+    errorState: $('error-state'),
+    mainContent: $('main-content'),
+    userSection: $('user-section'),
+    avatar: $('avatar'),
+    username: $('username'),
+    errorMessage: $('error-message'),
+    banners: $('banners'),
+    reviewList: $('review-list'),
+    reviewEmpty: $('review-empty'),
+    myprsList: $('myprs-list'),
+    myprsEmpty: $('myprs-empty'),
+    reviewBadge: $('review-badge'),
+    myprsBadge: $('myprs-badge'),
+    notesBadge: $('notes-badge'),
+    lastChecked: $('last-checked'),
+    refreshBtn: $('refresh-btn'),
+    retryBtn: $('retry-btn'),
+    settingsBtn: $('settings-btn'),
+    openOptionsBtn: $('open-options-btn'),
+    filterInput: $('filter-input'),
+    filterClear: $('filter-clear'),
+    themeToggle: $('theme-toggle'),
+    userMenuBtn: $('user-menu-btn'),
+    userMenuPanel: $('user-menu-panel'),
+    menuSettingsBtn: $('menu-settings-btn'),
+    menuLogoutBtn: $('menu-logout-btn'),
+  };
+
+  await initTheme(document);
+
+  let currentStatus = null;
+
+  const focusView = mountFocusView($('focus-tab'));
+
+  function selectTab(name) {
+    const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+    if (!tab) return;
+    document.querySelectorAll('.tab').forEach((t) => {
+      t.classList.toggle('active', t === tab);
+      t.setAttribute('aria-selected', String(t === tab));
+    });
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+    $(`${name}-tab`).classList.add('active');
+    elements.mainContent.dataset.activeTab = name;
+    if (name === 'focus') focusView.refresh();
+    try {
+      localStorage.setItem(LAST_TAB_KEY, name);
+    } catch {
+      /* storage unavailable: not important */
+    }
+  }
+  document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => selectTab(tab.dataset.tab)));
+  selectTab(localStorage.getItem(LAST_TAB_KEY) || 'review-requests');
+
+  notesView = mountNotesView({
+    onCountChange: (count) => {
+      elements.notesBadge.classList.toggle('hidden', count === 0);
+      elements.notesBadge.textContent = String(count);
+    },
+    onNotesChange: () => {
+      document.querySelectorAll('.pin-btn').forEach((btn) => updatePinButton(btn, notesView.isPinned(btn.dataset.url)));
+    },
+  });
+  const notesReady = notesView.reload();
+
+  elements.openOptionsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  elements.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  elements.menuSettingsBtn.addEventListener('click', () => {
+    closeUserMenu();
     chrome.runtime.openOptionsPage();
   });
-
-  elements.settingsBtn.addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
+  elements.menuLogoutBtn.addEventListener('click', async () => {
+    closeUserMenu();
+    await logout();
+    await chrome.runtime.sendMessage({ type: 'USER_LOGGED_OUT' });
+    showToast('Disconnected from GitHub.');
+    await loadData();
   });
 
-  async function loadData() {
-    elements.loadingState.classList.remove('hidden');
-    elements.unauthState.classList.add('hidden');
-    elements.errorState.classList.add('hidden');
-    elements.mainContent.classList.add('hidden');
+  function closeUserMenu() {
+    elements.userMenuPanel.classList.add('hidden');
+    elements.userMenuBtn.setAttribute('aria-expanded', 'false');
+  }
+  elements.userMenuBtn.addEventListener('click', () => {
+    const open = elements.userMenuPanel.classList.toggle('hidden') === false;
+    elements.userMenuBtn.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', (e) => {
+    if (!elements.userSection.contains(e.target)) closeUserMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeUserMenu();
+  });
+
+  async function updateThemeButton() {
+    const theme = (await chrome.storage.local.get(STORAGE_KEYS.SETTINGS))[STORAGE_KEYS.SETTINGS]?.theme || 'system';
+    elements.themeToggle.textContent = themeIcon(theme);
+    elements.themeToggle.title = `Switch theme (currently ${theme})`;
+  }
+  elements.themeToggle.addEventListener('click', async () => {
+    const current = (await chrome.storage.local.get(STORAGE_KEYS.SETTINGS))[STORAGE_KEYS.SETTINGS]?.theme || 'system';
+    await setTheme(nextTheme(current));
+    await updateThemeButton();
+  });
+  await updateThemeButton();
+
+  elements.filterInput.addEventListener('input', () => {
+    elements.filterClear.classList.toggle('hidden', !elements.filterInput.value);
+    currentStatus && render(currentStatus);
+  });
+  elements.filterClear.addEventListener('click', () => {
+    elements.filterInput.value = '';
+    elements.filterClear.classList.add('hidden');
+    elements.filterInput.focus();
+    currentStatus && render(currentStatus);
+  });
+
+  function matchesFilter(pr) {
+    const q = elements.filterInput.value.trim().toLowerCase();
+    if (!q) return true;
+    return [pr.title, pr.owner, pr.repo, `${pr.owner}/${pr.repo}`, pr.author, `#${pr.number}`]
+      .filter(Boolean)
+      .some((v) => v.toLowerCase().includes(q));
+  }
+
+  function skeletonCard() {
+    return h(
+      'div',
+      { className: 'skeleton-card' },
+      h('div', { className: 'skeleton-line w-80' }),
+      h('div', { className: 'skeleton-line w-40' })
+    );
+  }
+
+  /** Shown the first time data is fetched, instead of a misleading "nothing here" empty state. */
+  function renderSkeleton(listEl, emptyEl, badgeEl) {
+    emptyEl.classList.add('hidden');
+    badgeEl.classList.add('hidden');
+    setChildren(listEl, h('div', { className: 'skeleton-list' }, [1, 2, 3].map(skeletonCard)));
+  }
+
+  function renderList(prs, listEl, emptyEl, badgeEl, cardFn) {
+    badgeEl.classList.toggle('hidden', prs.length === 0);
+    badgeEl.textContent = String(prs.length);
+
+    const visible = prs.filter(matchesFilter);
+    emptyEl.classList.toggle('hidden', visible.length > 0);
+    if (prs.length > 0 && visible.length === 0) {
+      emptyEl.replaceChildren(h('p', {}, 'No pull requests match the filter'));
+    } else {
+      emptyEl.replaceChildren(h('p', {}, emptyEl.dataset.defaultText));
+    }
+    setChildren(listEl, visible.map(cardFn));
+  }
+
+  function renderLastChecked() {
+    const ts = currentStatus?.lastChecked;
+    elements.lastChecked.textContent = ts ? `Updated ${formatRelativeTime(ts)}` : 'Not updated yet';
+  }
+
+  function render(status) {
+    currentStatus = status;
+    if (status.user) {
+      elements.userSection.classList.remove('hidden');
+      elements.avatar.src = status.user.avatar_url || `https://github.com/${encodeURIComponent(status.user.login)}.png?size=40`;
+      elements.avatar.alt = status.user.login;
+      elements.username.textContent = status.user.login;
+    }
+    elements.banners.replaceChildren(...buildBanners(status));
+    if (status.lastChecked) {
+      renderList(status.reviewRequests, elements.reviewList, elements.reviewEmpty, elements.reviewBadge, reviewRequestCard);
+      renderList(status.myPRs, elements.myprsList, elements.myprsEmpty, elements.myprsBadge, myPRCard);
+    } else {
+      renderSkeleton(elements.reviewList, elements.reviewEmpty, elements.reviewBadge);
+      renderSkeleton(elements.myprsList, elements.myprsEmpty, elements.myprsBadge);
+    }
+    renderLastChecked();
+  }
+
+  elements.reviewEmpty.dataset.defaultText = elements.reviewEmpty.textContent.trim();
+  elements.myprsEmpty.dataset.defaultText = elements.myprsEmpty.textContent.trim();
+
+  async function loadData({ silent = false } = {}) {
+    if (!silent) {
+      elements.loadingState.classList.remove('hidden');
+      elements.errorState.classList.add('hidden');
+      elements.mainContent.classList.add('hidden');
+    }
 
     try {
       const status = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
-
       elements.loadingState.classList.add('hidden');
+      elements.mainContent.classList.remove('hidden');
 
-      if (!status || !status.authenticated) {
-        elements.unauthState.classList.remove('hidden');
+      // Notes work without a GitHub account; only the PR tabs need one.
+      const authenticated = !!status?.authenticated;
+      elements.mainContent.classList.toggle('unauth', !authenticated);
+      elements.refreshBtn.classList.toggle('hidden', !authenticated);
+      if (!authenticated) {
+        currentStatus = null;
+        elements.userSection.classList.add('hidden');
+        elements.banners.replaceChildren();
+        elements.lastChecked.textContent = '';
+        [elements.reviewBadge, elements.myprsBadge].forEach((b) => b.classList.add('hidden'));
         return;
       }
 
-      renderUserInfo(status.user, elements);
-      renderReviewRequests(status.reviewRequests, elements);
-      renderMyPRs(status.myPRs, elements);
-      renderLastChecked(status.lastChecked, elements);
+      render(status);
 
-      elements.mainContent.classList.remove('hidden');
+      // First run after login: no data yet, fetch immediately.
+      if (!status.lastChecked && !silent) refresh();
     } catch (error) {
       elements.loadingState.classList.add('hidden');
       elements.errorState.classList.remove('hidden');
@@ -108,138 +562,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  elements.refreshBtn.addEventListener('click', async () => {
+  async function refresh() {
     elements.refreshBtn.disabled = true;
-    elements.refreshBtn.textContent = 'Checking...';
+    elements.refreshBtn.textContent = 'Checking…';
     try {
       await chrome.runtime.sendMessage({ type: 'CHECK_NOW' });
-      await loadData();
-    } catch (error) {
-      elements.errorState.classList.remove('hidden');
-      elements.errorMessage.textContent = error.message;
+      await loadData({ silent: true });
+    } finally {
+      elements.refreshBtn.disabled = false;
+      elements.refreshBtn.textContent = 'Refresh';
     }
-    elements.refreshBtn.disabled = false;
-    elements.refreshBtn.textContent = 'Refresh';
+  }
+
+  elements.refreshBtn.addEventListener('click', refresh);
+  elements.retryBtn.addEventListener('click', () => loadData());
+
+  // Background polls while the popup is open update it live.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes[STORAGE_KEYS.LAST_CHECKED] || changes[STORAGE_KEYS.LAST_ERROR] || changes[STORAGE_KEYS.ACCESS_TOKEN]) {
+      loadData({ silent: true });
+    }
   });
+  setInterval(renderLastChecked, 30_000);
+  setInterval(() => elements.mainContent.dataset.activeTab === 'focus' && focusView.refresh(), 30_000);
 
-  elements.retryBtn.addEventListener('click', loadData);
-
+  await notesReady;
   await loadData();
-});
 
-function renderUserInfo(user, elements) {
-  elements.userSection.classList.remove('hidden');
-  elements.avatar.src = user.avatar_url;
-  elements.avatar.alt = user.login;
-  elements.username.textContent = user.login;
+  // Exposed for tests; harmless in production.
+  return { loadData, refresh, selectTab, render };
 }
 
-function renderReviewRequests(prs, elements) {
-  elements.reviewList.innerHTML = '';
-  elements.reviewBadge.classList.add('hidden');
-
-  if (!prs || prs.length === 0) {
-    elements.reviewEmpty.classList.remove('hidden');
-    return;
-  }
-
-  elements.reviewEmpty.classList.add('hidden');
-  elements.reviewBadge.classList.remove('hidden');
-  elements.reviewBadge.textContent = prs.length;
-
-  prs.forEach(pr => {
-    const item = document.createElement('div');
-    item.className = 'pr-item';
-    item.addEventListener('click', () => chrome.tabs.create({ url: pr.htmlUrl }));
-
-    item.innerHTML = `
-      <div class="pr-header">
-        <span class="pr-title">${escapeHtml(pr.title)}</span>
-        <span class="pr-number">#${pr.number}</span>
-      </div>
-      <div class="pr-meta">
-        <span class="pr-repo">${escapeHtml(pr.owner)}/${escapeHtml(pr.repo)}</span>
-        ${pr.draft ? '<span class="pr-draft">Draft</span>' : ''}
-        <span>by ${escapeHtml(pr.author || 'unknown')}</span>
-        <span>${formatRelativeTime(pr.createdAt)}</span>
-      </div>
-    `;
-
-    elements.reviewList.appendChild(item);
-  });
-}
-
-function renderMyPRs(prs, elements) {
-  elements.myprsList.innerHTML = '';
-  elements.myprsBadge.classList.add('hidden');
-
-  if (!prs || prs.length === 0) {
-    elements.myprsEmpty.classList.remove('hidden');
-    return;
-  }
-
-  elements.myprsEmpty.classList.add('hidden');
-  elements.myprsBadge.classList.remove('hidden');
-  elements.myprsBadge.textContent = prs.length;
-
-  prs.forEach(pr => {
-    const item = document.createElement('div');
-    item.className = 'pr-item';
-    item.addEventListener('click', () => chrome.tabs.create({ url: pr.htmlUrl }));
-
-    const ciInfo = ciStateClasses[pr.ciState] || ciStateClasses.unknown;
-    const reviewInfo = stateClasses[pr.reviewState] || stateClasses.pending;
-
-    const reviewersHtml = buildReviewersHtml(pr);
-
-    item.innerHTML = `
-      <div class="pr-header">
-        <span class="pr-title">${escapeHtml(pr.title)}</span>
-        <span class="status-dot ${reviewInfo.className}" title="${reviewInfo.label}"></span>
-      </div>
-      <div class="pr-meta">
-        <span class="pr-repo">${escapeHtml(pr.owner)}/${escapeHtml(pr.repo)}</span>
-        <span class="pr-number">#${pr.number}</span>
-        ${pr.draft ? '<span class="pr-draft">Draft</span>' : ''}
-        <span>${formatRelativeTime(pr.createdAt)}</span>
-      </div>
-      <div class="pr-status-row">
-        ${ciInfo.label ? `<span class="ci-status ${ciInfo.className}">${ciInfo.label}</span>` : ''}
-        ${reviewInfo.label !== 'Pending review' ? `<span>${reviewInfo.label}</span>` : ''}
-        ${pr.totalReviews > 0 ? `<span>${pr.totalReviews} review${pr.totalReviews > 1 ? 's' : ''}</span>` : ''}
-      </div>
-      ${reviewersHtml ? `<div class="reviewers">${reviewersHtml}</div>` : ''}
-    `;
-
-    elements.myprsList.appendChild(item);
-  });
-}
-
-function buildReviewersHtml(pr) {
-  const parts = [];
-
-  if (pr.approvals && pr.approvals.length > 0) {
-    pr.approvals.forEach(user => {
-      parts.push(`<span class="reviewer-tag approved">${escapeHtml(user)} ✓</span>`);
-    });
-  }
-
-  if (pr.changesRequested && pr.changesRequested.length > 0) {
-    pr.changesRequested.forEach(user => {
-      parts.push(`<span class="reviewer-tag changes">${escapeHtml(user)} ✗</span>`);
-    });
-  }
-
-  return parts.join('');
-}
-
-function renderLastChecked(timestamp, elements) {
-  elements.lastChecked.textContent = formatLastChecked(timestamp);
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+document.addEventListener('DOMContentLoaded', initPopup);
