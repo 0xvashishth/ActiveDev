@@ -52,7 +52,6 @@ Each poll makes a handful of requests, regardless of how many PRs you have:
 ## Notes: daily todos
 
 The popup's **Notes** tab is a lightweight daily todo list that works even when you're not signed in to GitHub.
-
 - **Add** a todo with Enter; URLs in the text become clickable links
 - **Check off** items — they move to a collapsible *Completed* section (with *Clear* + undo)
 - **Edit** with double-click (or Enter on a focused item); Escape cancels
