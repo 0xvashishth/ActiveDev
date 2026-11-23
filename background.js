@@ -9,6 +9,7 @@ import {
 import { getSettings } from './lib/settings.js';
 import { initFocusMonitor } from './lib/focus-monitor.js';
 import { dateKey, itemsForDay, loadNotes } from './lib/notes.js';
+import { fetchContributions, isStale, normalizeContributions } from './lib/contributions.js';
 import { getAccessToken, getAppInfo, logout } from './lib/auth.js';
 import {
   authoredPRsQuery,
@@ -126,6 +127,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return respond(focusMonitor.testNudge());
     case 'FOCUS_RESET_ACTIVITY':
       return respond(focusMonitor.resetActivity());
+    case 'GET_CONTRIBUTIONS':
+      return respond(getContributions());
+    case 'REFRESH_CONTRIBUTIONS':
+      return respond(refreshContributions());
     case 'USER_LOGGED_OUT':
       return respond(
         Promise.all([chrome.alarms.clear(ALARM_NAME), chrome.action.setBadgeText({ text: '' })])
@@ -404,6 +409,49 @@ async function loadOrganizations(login, ssoOrgIds) {
     const status = ssoSet.has(org.id) ? 'sso_required' : result.access;
     return { ...org, access: status, message: result.message };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Contribution stats (Stats tab)
+// ---------------------------------------------------------------------------
+
+let contributionsInflight = null;
+
+/** Cached stats plus whether they're old enough that the popup should ask for a refresh. */
+async function getContributions() {
+  if (!(await getAccessToken())) return { authenticated: false, data: null, stale: false };
+  const data = normalizeContributions((await chrome.storage.local.get(STORAGE_KEYS.CONTRIBUTIONS))[STORAGE_KEYS.CONTRIBUTIONS]);
+  return { authenticated: true, data, stale: isStale(data), refreshing: !!contributionsInflight };
+}
+
+/** Re-fetches from GitHub. Concurrent callers share one request. */
+function refreshContributions() {
+  if (!contributionsInflight) {
+    contributionsInflight = (async () => {
+      const login = (await chrome.storage.local.get(STORAGE_KEYS.USER_INFO))[STORAGE_KEYS.USER_INFO]?.login;
+      if (!login) {
+        if (!(await getAccessToken())) return { success: false, error: 'Not authenticated' };
+        const { user } = await getViewer();
+        await chrome.storage.local.set({ [STORAGE_KEYS.USER_INFO]: { login: user.login, avatar_url: user.avatar_url } });
+        return refreshFor(user.login);
+      }
+      return refreshFor(login);
+    })()
+      .catch(async (error) => {
+        if (error.kind === 'unauthorized') await logout();
+        return { success: false, error: error.message };
+      })
+      .finally(() => {
+        contributionsInflight = null;
+      });
+  }
+  return contributionsInflight;
+
+  async function refreshFor(login) {
+    const data = await fetchContributions(login);
+    await chrome.storage.local.set({ [STORAGE_KEYS.CONTRIBUTIONS]: data });
+    return { success: true, data };
+  }
 }
 
 async function getCachedStatus() {

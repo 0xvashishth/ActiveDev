@@ -147,6 +147,74 @@ test('CHECK_ORGS, FOCUS_SNOOZE, FOCUS_RESUME and FOCUS_RESET_ACTIVITY are wired 
   await send({ type: 'FOCUS_RESET_ACTIVITY' });
 });
 
+test('contribution stats: GET returns the cache (stale when empty), REFRESH fetches, dedupes, stores, and survives errors', async () => {
+  let empty = await send({ type: 'GET_CONTRIBUTIONS' });
+  assert.deepEqual(empty, { authenticated: true, data: null, stale: true, refreshing: false });
+
+  let graphqlCalls = 0;
+  fetchMock.restore();
+  fetchMock = installFetchMock([
+    [
+      'https://api.github.com/graphql',
+      (url, body) => {
+        graphqlCalls++;
+        if (body.query.includes('ContributionsOverview')) {
+          return jsonResponse({
+            data: {
+              reviewed: { issueCount: 3, nodes: [{ repository: { nameWithOwner: 'acme/api', url: 'https://github.com/acme/api', isPrivate: false } }] },
+              merged: { issueCount: 1, nodes: [] },
+              authored: { issueCount: 2 },
+              open: { issueCount: 1 },
+              merged30: { issueCount: 0 },
+              mergedYear: { issueCount: 1 },
+              user: { createdAt: '2020-01-01T00:00:00Z', last30: { totalPullRequestReviewContributions: 1, totalPullRequestContributions: 0 }, thisYear: { totalPullRequestReviewContributions: 2, totalPullRequestContributions: 1 } },
+            },
+          });
+        }
+        return jsonResponse({ data: { r0_reviewed: { issueCount: 3 }, r0_merged: { issueCount: 0 }, r0_authored: { issueCount: 0 } } });
+      },
+    ],
+  ]);
+
+  const [a, b] = await Promise.all([send({ type: 'REFRESH_CONTRIBUTIONS' }), send({ type: 'REFRESH_CONTRIBUTIONS' })]);
+  assert.equal(a.success, true);
+  assert.equal(b.success, true);
+  assert.equal(graphqlCalls, 2, 'concurrent refreshes share one fetch (overview + one repo batch)');
+  assert.equal(a.data.totals.prsReviewed, 3);
+  assert.equal((await stored(STORAGE_KEYS.CONTRIBUTIONS)).repos[0].nameWithOwner, 'acme/api');
+
+  const cached = await send({ type: 'GET_CONTRIBUTIONS' });
+  assert.equal(cached.stale, false);
+  assert.equal(cached.data.totals.prsMerged, 1);
+
+  fetchMock.restore();
+  fetchMock = installFetchMock([['https://api.github.com/graphql', () => jsonResponse({ message: 'nope' }, { status: 502 })]]);
+  const failed = await send({ type: 'REFRESH_CONTRIBUTIONS' });
+  assert.equal(failed.success, false);
+  assert.match(failed.error, /502/);
+  assert.ok(await stored(STORAGE_KEYS.CONTRIBUTIONS), 'a failed refresh keeps the previous cache');
+});
+
+test('contribution stats: refreshing without a cached user looks the login up first; signed out is reported', async () => {
+  await chrome.storage.local.remove(STORAGE_KEYS.USER_INFO);
+  fetchMock.restore();
+  fetchMock = installFetchMock([
+    [(url) => url.href === 'https://api.github.com/user', () => jsonResponse({ login: 'me', avatar_url: '' })],
+    ['https://api.github.com/graphql', (url, body) =>
+      body.query.includes('ContributionsOverview')
+        ? jsonResponse({ data: { reviewed: { issueCount: 0, nodes: [] }, merged: { issueCount: 0, nodes: [] }, authored: { issueCount: 0 }, open: { issueCount: 0 }, merged30: { issueCount: 0 }, mergedYear: { issueCount: 0 }, user: { createdAt: null } } })
+        : jsonResponse({ data: {} })],
+  ]);
+  const result = await send({ type: 'REFRESH_CONTRIBUTIONS' });
+  assert.equal(result.success, true);
+  assert.equal((await stored(STORAGE_KEYS.USER_INFO)).login, 'me');
+
+  await chrome.storage.local.remove([STORAGE_KEYS.ACCESS_TOKEN, STORAGE_KEYS.USER_INFO]);
+  assert.deepEqual(await send({ type: 'GET_CONTRIBUTIONS' }), { authenticated: false, data: null, stale: false });
+  assert.deepEqual(await send({ type: 'REFRESH_CONTRIBUTIONS' }), { success: false, error: 'Not authenticated' });
+  await chrome.storage.local.set({ [STORAGE_KEYS.ACCESS_TOKEN]: 'tok' });
+});
+
 test('an org-access check failure that is not a rate-limit/auth error is logged but does not fail the poll', async (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
   fetchMock.restore();

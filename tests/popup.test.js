@@ -293,6 +293,47 @@ test('tab switching persists the last tab across reloads and triggers a focus re
   assert.equal(ctx.document.getElementById('my-prs-tab').classList.contains('active'), true);
 });
 
+test('Stats tab: selecting it loads contribution stats and hides the PR-only chrome', async () => {
+  const calls = [];
+  await boot((msg) => {
+    calls.push(msg.type);
+    if (msg.type === 'GET_CONTRIBUTIONS') {
+      return {
+        authenticated: true,
+        stale: false,
+        data: {
+          version: 1,
+          fetchedAt: Date.now(),
+          totals: { prsReviewed: 12, prsMerged: 3, prsAuthored: 5, prsOpen: 1, mergeRate: 60 },
+          windows: { last30: { reviewsSubmitted: 1, prsOpened: 1, prsMerged: 1 }, thisYear: { reviewsSubmitted: 2, prsOpened: 2, prsMerged: 2 } },
+          repos: [],
+          coverage: { reposOmitted: 0 },
+        },
+      };
+    }
+    return baseStatus();
+  });
+  const { document } = ctx;
+  document.querySelector('.tab[data-tab="stats"]').click();
+  await flush(2);
+  assert.equal(document.getElementById('main-content').dataset.activeTab, 'stats');
+  assert.equal(calls.filter((t) => t === 'GET_CONTRIBUTIONS').length, 1);
+  assert.match(document.getElementById('stats-tab').textContent, /PRs reviewed/);
+  assert.equal(document.getElementById('stats-tab').classList.contains('active'), true);
+});
+
+test('Stats tab while signed out: shows the connect prompt instead of fetching', async () => {
+  const calls = [];
+  await boot((msg) => {
+    calls.push(msg.type);
+    return { authenticated: false };
+  });
+  ctx.document.querySelector('.tab[data-tab="stats"]').click();
+  await flush(2);
+  assert.equal(calls.includes('GET_CONTRIBUTIONS'), false);
+  assert.equal(ctx.document.getElementById('main-content').classList.contains('unauth'), true);
+});
+
 test('theme toggle cycles system -> light -> dark and persists', async () => {
   await boot(() => baseStatus());
   const { document, chrome } = ctx;

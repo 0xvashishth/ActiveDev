@@ -211,11 +211,13 @@ test('a non-auth error does not log the user out; a 401 does', async () => {
   await send({ type: 'CHECK_NOW' });
   assert.equal(await stored(STORAGE_KEYS.ACCESS_TOKEN), 'tok');
 
+  await chrome.storage.local.set({ [STORAGE_KEYS.CONTRIBUTIONS]: { version: 1, totals: { prsReviewed: 1 } } });
   world.userStatus = 401;
   await send({ type: 'CHECK_NOW' });
   assert.equal(await stored(STORAGE_KEYS.ACCESS_TOKEN), undefined);
   assert.equal(await stored(STORAGE_KEYS.REVIEW_REQUEST_PRS), undefined);
   assert.ok(await stored(STORAGE_KEYS.SETTINGS), 'settings survive logout');
   assert.ok(await stored(STORAGE_KEYS.ACTIVITY), 'focus history survives logout');
+  assert.equal(await stored(STORAGE_KEYS.CONTRIBUTIONS), undefined, 'contribution stats are account data and are cleared');
   assert.deepEqual(await send({ type: 'GET_STATUS' }), { authenticated: false });
 });

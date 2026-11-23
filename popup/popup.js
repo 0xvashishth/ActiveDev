@@ -4,6 +4,7 @@ import { initTheme, nextTheme, setTheme, themeIcon } from '../lib/theme.js';
 import { h, openUrl, setChildren, showToast } from './dom.js';
 import { mountNotesView } from './notes-view.js';
 import { mountFocusView } from './focus-view.js';
+import { mountStatsView } from './stats-view.js';
 
 const LAST_TAB_KEY = 'activedev:lastTab';
 
@@ -377,6 +378,7 @@ export async function initPopup() {
   let currentStatus = null;
 
   const focusView = mountFocusView($('focus-tab'));
+  const statsView = mountStatsView($('stats-tab'));
 
   function selectTab(name) {
     const tab = document.querySelector(`.tab[data-tab="${name}"]`);
@@ -389,6 +391,7 @@ export async function initPopup() {
     $(`${name}-tab`).classList.add('active');
     elements.mainContent.dataset.activeTab = name;
     if (name === 'focus') focusView.refresh();
+    if (name === 'stats' && !elements.mainContent.classList.contains('unauth')) statsView.load();
     try {
       localStorage.setItem(LAST_TAB_KEY, name);
     } catch {
@@ -591,7 +594,7 @@ export async function initPopup() {
   await loadData();
 
   // Exposed for tests; harmless in production.
-  return { loadData, refresh, selectTab, render };
+  return { loadData, refresh, selectTab, render, statsView };
 }
 
 document.addEventListener('DOMContentLoaded', initPopup);
