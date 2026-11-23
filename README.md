@@ -45,6 +45,7 @@ Each poll makes a handful of requests, regardless of how many PRs you have:
 - **Notes tab: daily todos & notes** (see below)
 - **Focus monitor (opt-in)**: nudges you to finish pending reviews when you've been on YouTube & co. for too long,
   plus a Focus tab that analyses where your time went (see below)
+- **Stats tab**: how many PRs you've reviewed and merged — all-time, recently, and per repository (see below)
 - **Configurable polling** (1–30 min), notification toggles, optional hiding of draft review requests
 - Popup updates live while open; toolbar badge shows pending review requests (`!` if the last update failed)
 
@@ -97,6 +98,22 @@ with **Open it now** and **Snooze 60 min** buttons.
 Chrome does not even reveal the URL of any other tab to it. Only per-day, per-site totals are stored (no URLs,
 titles or visit times), in `chrome.storage.local`, for 30 days. Turning the monitor off removes the site access;
 **Delete activity history** wipes the data.
+
+## Stats: your contributions
+
+The **Stats** tab answers "how much have I actually reviewed and shipped?", overall and per repository:
+
+- **All-time totals**: PRs you reviewed (others' PRs you submitted a review on), your PRs that were merged, and
+  your PRs opened (with merge rate and how many are still open).
+- **Recently**: reviews submitted, PRs merged and PRs opened in the last 30 days and this year.
+- **By repository**: the ~12 repositories you've been most active in recently, each with exact reviewed /
+  merged / opened counts and merge rate, sortable by activity, reviewed, merged or name.
+
+Numbers are exact: all-time and per-repo counts come from GitHub search totals (`reviewed-by:`,
+`is:merged author:`, `repo:`), recent windows from GitHub's `contributionsCollection`. The per-repo *list* is
+chosen from your latest 100 reviewed and 100 merged PRs, so a repository you were active in only long ago may
+not be listed (the footer says how many were left out). Stats are fetched on demand when you open the tab,
+cached for six hours, and refreshable with one click; they are cleared on disconnect.
 
 ## Organizations: why PRs can be missing
 
@@ -160,11 +177,13 @@ ActiveDev/
 │   ├── notes.js             # Daily notes/todos: pure state logic + serialized storage writes
 │   ├── settings.js          # Settings read/merge helpers
 │   ├── activity.js          # Focus monitor pure logic: classification, sessions, nudges, insights
-│   └── focus-monitor.js     # Focus monitor runtime: tab/idle events, time accounting, notifications
+│   ├── focus-monitor.js     # Focus monitor runtime: tab/idle events, time accounting, notifications
+│   └── contributions.js     # Stats tab data: review/merge totals, per-repo counts (GraphQL search)
 ├── popup/
 │   ├── popup.html / .js / .css
 │   ├── notes-view.js        # Notes tab UI
 │   ├── focus-view.js        # Focus tab UI (activity analysis)
+│   ├── stats-view.js        # Stats tab UI (contributions)
 │   └── dom.js               # Shared DOM helpers (safe element builder, toast queue)
 ├── options/
 │   ├── options.html / .js / .css
@@ -205,7 +224,7 @@ npm test              # fast run, no coverage
 npm run test:coverage # full run with a coverage report + enforced minimums (see below)
 ```
 
-The suite (~195 tests) runs entirely offline. `tests/helpers/` provides an in-memory `chrome.*` mock, a fake
+The suite (~220 tests) runs entirely offline. `tests/helpers/` provides an in-memory `chrome.*` mock, a fake
 GitHub REST/GraphQL API, and (`dom-mock.js`) a small [jsdom](https://github.com/jsdom/jsdom)-based harness that
 loads the real `popup.html` / `options.html` and drives the actual UI modules — clicking, typing, dragging,
 keyboard shortcuts — rather than re-implementing their logic as a separate model. Each UI module exports its
@@ -235,8 +254,9 @@ What's covered: the PR model; the API client (typed errors, the SSO header, Grap
 background polls (notifications, rate limiting, logout-on-401, the focus monitor wiring); the OAuth server
 (including the token-exfiltration fix and the extension allowlist); notes (ordering, carry-over, undo, pruning,
 import/merge, concurrent writes); the focus monitor (simulated browsing with a fake clock — thresholds, repeats,
-snooze, idle/locked/audio rules, permissions, tab/window/idle event listeners, work hours); and the popup/options
-UI itself (every tab, every banner, theme, the account menu, settings forms, drag-and-drop reordering, file
+snooze, idle/locked/audio rules, permissions, tab/window/idle event listeners, work hours); contribution stats
+(query building, aggregation, exact-count merging, fetch batching and failure modes, caching/dedupe in the
+background, and the Stats tab UI); and the popup/options UI itself (every tab, every banner, theme, the account menu, settings forms, drag-and-drop reordering, file
 import/export, permission prompts, and more) via the jsdom harness.
 
 Writing the UI tests caught several real bugs that manual testing had missed, including: a toast silently

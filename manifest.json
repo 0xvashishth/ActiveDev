@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ActiveDev",
-  "version": "1.4.0",
-  "description": "Never miss a GitHub review request across your repos and orgs. Review/CI status, daily notes, and optional focus nudges.",
+  "version": "1.5.0",
+  "description": "Never miss a GitHub review request across your repos and orgs. Review/CI status, contribution stats, daily notes, and optional focus nudges.",
   "permissions": [
     "identity",
     "alarms",
