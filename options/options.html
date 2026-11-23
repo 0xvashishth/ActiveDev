@@ -9,9 +9,21 @@
 <body>
   <div class="container">
     <header>
-      <h1>ActiveDev</h1>
-      <p class="subtitle">GitHub Review Reminder</p>
+      <div>
+        <h1>ActiveDev</h1>
+        <p class="subtitle">GitHub Review Reminder</p>
+      </div>
+      <div class="form-group theme-picker">
+        <label for="theme-select">Appearance</label>
+        <select id="theme-select">
+          <option value="system">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
     </header>
+
+    <nav id="settings-nav" class="settings-nav" aria-label="Jump to section"></nav>
 
     <div id="auth-status" class="card hidden">
       <div class="status-row">
@@ -21,12 +33,16 @@
       <button id="logout-btn" class="btn-danger">Disconnect</button>
     </div>
 
-    <div class="card">
+    <div class="card" id="account">
       <h2>Authentication</h2>
       <p class="help-text">
-        Connect your GitHub account to start getting review notifications. The OAuth app requests read-only access to your pull requests, checks, and organization membership.
+        Connect your GitHub account to start getting review notifications. ActiveDev requests the
+        <code>repo</code>, <code>read:user</code> and <code>read:org</code> scopes so it can see pull requests in
+        private repositories and in the organizations you belong to. ActiveDev only ever reads data; GitHub has no
+        read-only scope for private repositories, so <code>repo</code> is required.
       </p>
 
+      <div id="scope-warning" class="notice warning hidden"></div>
       <div id="status-message" class="hidden"></div>
 
       <div class="form-actions">
@@ -34,26 +50,138 @@
       </div>
     </div>
 
-    <div class="card">
+    <div id="orgs-card" class="card hidden">
+      <div class="card-header">
+        <h2>Organization access</h2>
+        <button id="recheck-orgs-btn" class="btn-small">Re-check</button>
+      </div>
+      <p class="help-text">
+        Organizations can block third-party OAuth apps or require SAML single sign-on. When that happens GitHub
+        silently hides their pull requests, so they will not show up here until access is granted.
+      </p>
+      <ul id="orgs-list" class="org-list"></ul>
+      <p id="orgs-empty" class="help-text small hidden">No organizations found for this account.</p>
+      <p class="help-text small">
+        Missing an organization, or one is marked restricted? Open
+        <a id="app-settings-link" href="https://github.com/settings/applications" target="_blank" rel="noopener">the ActiveDev app on GitHub</a>
+        and click <strong>Grant</strong> (if you are an owner) or <strong>Request</strong> next to the organization.
+      </p>
+      <p id="orgs-checked-at" class="help-text small"></p>
+    </div>
+
+    <div class="card" id="preferences">
+      <h2>Preferences</h2>
+      <div class="form-group">
+        <label for="poll-interval">Check GitHub every</label>
+        <select id="poll-interval"></select>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" id="notify-review-requests">
+        Notify me when my review is requested (or re-requested)
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" id="notify-reviews">
+        Notify me when someone reviews my pull requests
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" id="include-drafts">
+        Include draft pull requests in review requests
+      </label>
+      <p id="settings-saved" class="help-text small hidden">Saved.</p>
+    </div>
+
+    <div class="card" id="focus">
+      <div class="card-header">
+        <h2>Focus monitor</h2>
+        <label class="switch">
+          <input type="checkbox" id="focus-enabled">
+          <span id="focus-enabled-label">Off</span>
+        </label>
+      </div>
+      <p class="help-text">
+        When you've spent a while on distracting sites and reviews are waiting for you, ActiveDev sends a friendly
+        reminder like <em>“Instead of more YouTube, there's a pending review… finish it first, then enjoy the rest!”</em>
+        If there are no reviews, it points you to your PRs that need a reply or today's todos. No pending work, no reminder.
+      </p>
+      <div class="privacy-note">
+        🔒 <strong>Private by design.</strong> ActiveDev asks Chrome for access <em>only</em> to the sites listed below,
+        so it cannot see any other site you visit. It stores only daily totals per site (no URLs, no titles), on this
+        device only. Turning the monitor off removes that site access.
+      </div>
+
+      <h3>Distracting sites</h3>
+      <ul id="focus-sites" class="site-list"></ul>
+      <form id="focus-add-site" class="inline-form" autocomplete="off">
+        <input id="focus-site-input" type="text" placeholder="Add a site, e.g. youtube.com">
+        <button type="submit" class="btn-small">Add</button>
+      </form>
+      <div id="focus-suggestions" class="suggestions"></div>
+
+      <h3>Reminders</h3>
+      <div class="form-row">
+        <label for="focus-threshold">Remind me after</label>
+        <select id="focus-threshold"></select>
+        <span>on these sites, then every</span>
+        <select id="focus-repeat"></select>
+      </div>
+      <p class="help-text small">Short breaks (under 5 minutes) don't reset the timer. Time counts only while Chrome is
+        the app you're using and the site is in front, and you're active or it's playing a video. Music in a
+        background tab while you work elsewhere doesn't count, and neither does a locked screen.</p>
+      <label class="checkbox">
+        <input type="checkbox" id="focus-work-hours">
+        Only remind me during working hours
+      </label>
+      <div id="focus-work-hours-row" class="form-row indent">
+        <select id="focus-work-start"></select>
+        <span>to</span>
+        <select id="focus-work-end"></select>
+        <label class="checkbox inline"><input type="checkbox" id="focus-weekdays"> weekdays only</label>
+      </div>
+
+      <div class="button-row">
+        <button id="focus-test-btn" class="btn-small">Send a test reminder</button>
+        <button id="focus-reset-btn" class="btn-danger btn-danger-small">Delete activity history</button>
+      </div>
+      <p id="focus-message" class="help-text small hidden"></p>
+    </div>
+
+    <div class="card" id="notes-card">
+      <h2>Notes &amp; todos</h2>
+      <p class="help-text">
+        Your daily todos and notes (popup → <strong>Notes</strong> tab) are stored only in this browser profile.
+        They are kept when you disconnect GitHub, but are lost if the extension is removed — export a backup
+        to keep them or move them to another computer.
+      </p>
+      <p id="notes-summary" class="help-text small"></p>
+      <div class="button-row">
+        <button id="notes-export-btn" class="btn-small">Export backup (JSON)</button>
+        <button id="notes-import-btn" class="btn-small">Import backup…</button>
+        <input id="notes-import-file" type="file" accept="application/json,.json" class="hidden">
+        <button id="notes-delete-btn" class="btn-danger btn-danger-small">Delete all notes</button>
+      </div>
+      <p id="notes-message" class="help-text small hidden"></p>
+    </div>
+
+    <div class="card" id="about">
       <h2>How it works</h2>
       <ol class="steps">
         <li>
           <strong>Login with GitHub</strong>
-          <p>Authorize the ActiveDev OAuth App to get an access token.</p>
+          <p>Authorize the ActiveDev OAuth App. On the GitHub consent screen, use <em>Grant</em> / <em>Request</em> for each organization whose pull requests you want to see.</p>
         </li>
         <li>
-          <strong>Grant access</strong>
-          <p>The OAuth app requests read-only access to your pull requests, checks, and organization data.</p>
+          <strong>Background checks</strong>
+          <p>ActiveDev periodically fetches PRs awaiting your review (directly or via your teams) and your own open PRs, across all accessible repositories and organizations.</p>
         </li>
         <li>
           <strong>Get notified</strong>
-          <p>You'll receive notifications when you're added as a reviewer or when someone reviews your PRs.</p>
+          <p>You'll receive notifications when you're added as a reviewer or when someone reviews your PRs. The popup shows who already reviewed, unresolved conversations, CI status and merge conflicts.</p>
         </li>
       </ol>
     </div>
 
     <footer>
-      <p>Version 1.0.0</p>
+      <p id="version"></p>
     </footer>
   </div>
   <script src="options.js" type="module"></script>

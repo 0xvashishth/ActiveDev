@@ -9,24 +9,25 @@
     <div id="app">
       <header>
         <h1>ActiveDev</h1>
-        <div id="user-section" class="hidden">
-          <img id="avatar" src="" alt="" />
-          <span id="username"></span>
+        <div class="header-actions">
+          <button id="theme-toggle" class="icon-btn" type="button" title="Switch theme (system)" aria-label="Switch theme">🖥️</button>
+          <div id="user-section" class="user-menu hidden">
+            <button id="user-menu-btn" class="user-chip" type="button" aria-haspopup="true" aria-expanded="false">
+              <img id="avatar" src="" alt="" />
+              <span id="username"></span>
+              <span class="caret" aria-hidden="true">▾</span>
+            </button>
+            <div id="user-menu-panel" class="user-menu-panel hidden" role="menu">
+              <button id="menu-settings-btn" class="menu-item" type="button" role="menuitem">⚙️ Settings</button>
+              <button id="menu-logout-btn" class="menu-item danger" type="button" role="menuitem">⏻ Disconnect</button>
+            </div>
+          </div>
         </div>
       </header>
 
       <div id="loading-state" class="state hidden">
         <div class="spinner"></div>
         <p>Loading...</p>
-      </div>
-
-      <div id="unauthenticated-state" class="state hidden">
-        <div class="state-icon">🔒</div>
-        <p class="state-title">Not Authenticated</p>
-        <p class="state-desc">Connect your GitHub account to get started.</p>
-        <button id="open-options-btn" class="btn-primary">
-          Configure OAuth
-        </button>
       </div>
 
       <div id="error-state" class="state hidden">
@@ -36,42 +37,95 @@
         <button id="retry-btn" class="btn-secondary">Retry</button>
       </div>
 
-      <div id="main-content" class="hidden">
-        <nav class="tabs">
-          <button class="tab active" data-tab="review-requests">
+      <div id="main-content" class="hidden" data-active-tab="review-requests">
+        <div id="banners"></div>
+
+        <nav class="tabs" role="tablist">
+          <button class="tab active" data-tab="review-requests" role="tab">
             Review Requests
             <span id="review-badge" class="badge hidden">0</span>
           </button>
-          <button class="tab" data-tab="my-prs">
+          <button class="tab" data-tab="my-prs" role="tab">
             My PRs
             <span id="myprs-badge" class="badge hidden">0</span>
           </button>
+          <button class="tab" data-tab="notes" role="tab">
+            Notes
+            <span id="notes-badge" class="badge hidden">0</span>
+          </button>
+          <button class="tab" data-tab="focus" role="tab">Focus</button>
         </nav>
 
-        <div id="review-requests-tab" class="tab-panel active">
+        <div id="auth-required" class="state hidden">
+          <div class="state-icon">🔒</div>
+          <p class="state-title">Not Authenticated</p>
+          <p class="state-desc">Connect your GitHub account to see your pull requests.<br />Notes work without an account.</p>
+          <button id="open-options-btn" class="btn-primary">Connect GitHub</button>
+        </div>
+
+        <div class="filter-bar pr-only">
+          <input id="filter-input" type="search" placeholder="Filter by title, repo, org or author…" autocomplete="off" />
+          <button id="filter-clear" class="hidden" type="button" title="Clear filter" aria-label="Clear filter">✕</button>
+        </div>
+
+        <div id="review-requests-tab" class="tab-panel pr-only active">
           <div id="review-empty" class="empty-state hidden">
-            <p>No pending review requests</p>
+            <p>No pending review requests 🎉</p>
           </div>
           <div id="review-list"></div>
         </div>
 
-        <div id="my-prs-tab" class="tab-panel">
+        <div id="my-prs-tab" class="tab-panel pr-only">
           <div id="myprs-empty" class="empty-state hidden">
             <p>No open pull requests</p>
-            <p class="empty-hint">Make sure the OAuth app is authorized on your repos.</p>
           </div>
           <div id="myprs-list"></div>
         </div>
+
+        <div id="notes-tab" class="tab-panel">
+          <div class="notes-toolbar">
+            <button id="notes-prev" class="icon-btn" title="Previous day" aria-label="Previous day">‹</button>
+            <button id="notes-day-label" class="day-label" title="Back to today">Today</button>
+            <button id="notes-next" class="icon-btn" title="Next day" aria-label="Next day">›</button>
+            <span id="notes-progress" class="notes-progress"></span>
+          </div>
+
+          <form id="notes-add-form" class="notes-add" autocomplete="off">
+            <input id="notes-input" type="text" placeholder="Add a todo for today…" aria-label="New todo" />
+            <button type="submit" class="btn-primary btn-compact">Add</button>
+          </form>
+
+          <div id="notes-overdue"></div>
+
+          <ul id="notes-open-list" class="todo-list"></ul>
+          <p id="notes-empty" class="notes-empty hidden"></p>
+
+          <details id="notes-completed" class="completed hidden">
+            <summary>
+              <span id="notes-completed-summary">Completed</span>
+              <button id="notes-clear-completed" class="link-btn" type="button">Clear</button>
+            </summary>
+            <ul id="notes-completed-list" class="todo-list"></ul>
+          </details>
+
+          <div class="day-note">
+            <div class="day-note-header">
+              <span>📝 Notes for the day</span>
+              <span id="notes-day-note-status" class="day-note-status"></span>
+            </div>
+            <textarea id="notes-day-note" rows="4" aria-label="Notes for the day"></textarea>
+          </div>
+        </div>
+
+        <div id="focus-tab" class="tab-panel"></div>
+
+        <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
       </div>
 
       <footer>
-        <button id="refresh-btn" class="footer-btn" title="Refresh now">
-          Refresh
-        </button>
+        <button id="refresh-btn" class="footer-btn" title="Refresh now">Refresh</button>
         <span id="last-checked"></span>
-        <button id="settings-btn" class="footer-btn" title="Settings">
-          Settings
-        </button>
+        <button id="settings-btn" class="footer-btn" title="Settings">Settings</button>
       </footer>
     </div>
     <script src="popup.js" type="module"></script>

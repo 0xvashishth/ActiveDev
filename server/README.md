@@ -24,16 +24,25 @@ The server uses **HMAC-signed state tokens** (no database needed) — the entire
    - `GITHUB_CLIENT_ID` — from your GitHub OAuth App
    - `GITHUB_CLIENT_SECRET` — from your GitHub OAuth App
    - `PUBLIC_URL` — `https://your-project.vercel.app`
+   - `ALLOWED_EXTENSION_IDS` *(optional, recommended)* — comma-separated Chrome extension IDs allowed to log in
 4. Deploy — Vercel detects `vercel.json` and `api/index.js` automatically
 
 Your server is live at `https://your-project.vercel.app`.
 
 ### 3. Connect the Extension
 
-1. Install the extension in Chrome (Load unpacked)
-2. Open extension **Settings**
-3. Enter `https://your-project.vercel.app` as the Server URL
-4. Click **Login with GitHub**
+1. Set `SERVER_URL` in `lib/constants.js` to `https://your-project.vercel.app`
+2. Install the extension in Chrome (Load unpacked)
+3. Open extension **Settings** → **Login with GitHub**
+
+## Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/auth/start?extension_id=…&redirect_uri=…` | Starts OAuth (scopes `repo read:user read:org`). `redirect_uri` must be the extension's own `https://<id>.chromiumapp.org/` URL. |
+| `GET /api/auth/callback` | GitHub redirect target; exchanges the code and returns `#access_token=…&scope=…` (or `#error=…`) to the extension. |
+| `GET /api/auth/app` | Public client ID, used by the extension to link to the "grant organization access" page. |
+| `GET /api/auth/health` | Health check. |
 
 ### Local Development
 
